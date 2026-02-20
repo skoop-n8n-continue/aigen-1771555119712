@@ -368,11 +368,6 @@ function animate() {
         lightning.intensity = intensity;
         
         // Flash sky
-        const flashIntensity = intensity * 0.05;
-            bgCol >> 16 & 255 / 255 + flashIntensity, 
-            bgCol >> 8 & 255 / 255 + flashIntensity, 
-            bgCol & 255 / 255 + flashIntensity
-        );
         // Simple hack: just set to brighter blue
         if(Math.random() > 0.5) {
             scene.background.setHex(0x1a1a35);
