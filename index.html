@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Weather Forecast</title>
-    <link rel="stylesheet" href="style.css?v=1771555538">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CyberRain Forecast</title>
+    <link rel="stylesheet" href="style.css?v=2">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -12,13 +12,31 @@
 <body>
     <div id="ui-container">
         <div id="weather-info">
-            <h1>Current Weather</h1>
-            <div class="weather-detail">
-                <span id="temp">72°F</span>
-                <span id="condition">Rain & Partially Cloudy</span>
+            <div class="header">
+                <span class="live-badge">LIVE</span>
+                <span class="location">NEO-TOKYO SECTOR 7</span>
             </div>
-            <div class="location">Low Poly City</div>
-            <div class="instruction">Drag to look around</div>
+            <div class="temp-display">
+                <span id="temp">64°</span>
+                <div class="condition-stack">
+                    <span id="condition">HEAVY RAIN</span>
+                    <span class="sub-condition">Thunderstorms</span>
+                </div>
+            </div>
+            <div class="forecast-row">
+                <div class="forecast-item">
+                    <span class="label">WIND</span>
+                    <span class="value">12 MPH</span>
+                </div>
+                <div class="forecast-item">
+                    <span class="label">HUMIDITY</span>
+                    <span class="value">94%</span>
+                </div>
+                <div class="forecast-item">
+                    <span class="label">VISIBILITY</span>
+                    <span class="value">2.4 MI</span>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -26,6 +44,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     
-    <script src="script.js?v=1771555538"></script>
+    <script src="script.js?v=2"></script>
 </body>
 </html>

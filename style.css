@@ -1,83 +1,138 @@
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap');
+
 body, html {
     margin: 0;
     padding: 0;
     width: 100%;
     height: 100%;
     overflow: hidden;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background-color: #0a0a0a;
+    font-family: 'Exo 2', sans-serif;
+    background-color: #000;
 }
 
 canvas {
     display: block;
     width: 100%;
     height: 100%;
+    outline: none;
 }
 
 #ui-container {
     position: absolute;
-    top: 20px;
-    left: 20px;
+    bottom: 40px;
+    left: 40px;
     color: white;
     z-index: 10;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 20px;
-    border-radius: 12px;
-    pointer-events: none; /* Let clicks pass through to canvas */
-    backdrop-filter: blur(8px);
+    pointer-events: none;
+    max-width: 400px;
+}
+
+#weather-info {
+    background: rgba(10, 15, 25, 0.6);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    padding: 25px;
+    border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    max-width: 300px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
 
-#weather-info h1 {
-    margin: 0 0 10px 0;
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #ccc;
-    font-weight: 600;
-}
-
-.weather-detail {
+.header {
     display: flex;
-    flex-direction: column;
-    margin-bottom: 10px;
+    align-items: center;
+    margin-bottom: 15px;
 }
 
-#temp {
-    font-size: 48px;
-    font-weight: 300;
-    line-height: 1.1;
-    margin-bottom: 5px;
-}
-
-#condition {
-    font-size: 16px;
-    color: #00b7af; /* Use the brand primary */
-    font-weight: 500;
+.live-badge {
+    background: #ff4757;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 10px;
+    letter-spacing: 1px;
+    animation: pulse 2s infinite;
 }
 
 .location {
-    font-size: 14px;
-    color: #aaa;
-    margin-top: 5px;
-}
-
-.instruction {
-    margin-top: 20px;
     font-size: 12px;
-    color: #6a7071;
-    font-style: italic;
-    display: flex;
-    align-items: center;
+    letter-spacing: 2px;
+    color: #aab;
+    text-transform: uppercase;
 }
 
-.instruction:before {
-    content: '';
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    background: url('data:image/svg+xml;utf8,<svg fill="%236a7071" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-4.41-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>') no-repeat center;
-    margin-right: 5px;
+.temp-display {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 20px;
+}
+
+#temp {
+    font-size: 72px;
+    font-weight: 300;
+    line-height: 1;
+    margin-right: 15px;
+    text-shadow: 0 0 20px rgba(255,255,255,0.3);
+}
+
+.condition-stack {
+    display: flex;
+    flex-direction: column;
+}
+
+#condition {
+    font-size: 18px;
+    font-weight: 700;
+    color: #00d2d3;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sub-condition {
+    font-size: 14px;
+    color: #889;
+}
+
+.forecast-row {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 15px;
+}
+
+.forecast-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.forecast-item .label {
+    font-size: 10px;
+    color: #667;
+    margin-bottom: 3px;
+    letter-spacing: 1px;
+}
+
+.forecast-item .value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #dde;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+}
+
+@media (max-width: 600px) {
+    #ui-container {
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        max-width: none;
+    }
+    #temp {
+        font-size: 56px;
+    }
 }

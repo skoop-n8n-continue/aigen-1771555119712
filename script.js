@@ -1,247 +1,400 @@
-// Initialize Three.js Scene
+// --- CONFIGURATION ---
+const CONFIG = {
+    rainCount: 15000,
+    cloudCount: 60,
+    fogDensity: 0.012, // Slightly less dense for more depth
+    rainSpeed: 120,
+    windSpeed: 8,
+    citySize: 450,
+    streetLightInterval: 40
+};
+
+// --- SCENE SETUP ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a2e); // Dark blue-ish background
-scene.fog = new THREE.FogExp2(0x1a1a2e, 0.015); // Fog for depth
+const bgCol = 0x050510;
+scene.background = new THREE.Color(bgCol);
+scene.fog = new THREE.FogExp2(bgCol, CONFIG.fogDensity);
 
-// Camera Setup
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-// Position camera at "eye level" (y=2) but slightly offset from center for OrbitControls to work
-camera.position.set(0.1, 2, 0); 
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 800);
+camera.position.set(0, 1.8, 0);
 
-// Renderer Setup
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
 document.body.appendChild(renderer.domElement);
 
-// Controls
-// To simulate "looking around" from a fixed point, we use OrbitControls
-// orbiting around a target very close to the camera.
-// By reversing rotate speed, dragging feels like rotating the head/camera.
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.enableZoom = false;
 controls.enablePan = false;
-controls.rotateSpeed = -0.5; // Invert control for "look" feel
-controls.target.set(0, 2, 0); // Target is "eye level" center
+controls.rotateSpeed = -0.3; // Inverted for "head look" feel
+controls.target.set(0, 1.8, 0.1);
 controls.update();
 
-// Lighting
-// Ambient light for base visibility
-const ambientLight = new THREE.AmbientLight(0x404040, 2); // Soft white light
-scene.add(ambientLight);
+// --- ASSET GENERATION (Procedural) ---
 
-// Directional light (Sun/Moon) - Dim for rainy weather
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-dirLight.position.set(-1, 1, 0);
-scene.add(dirLight);
+function createNoiseTexture() {
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    const imgData = ctx.createImageData(size, size);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+        const val = 40 + Math.random() * 80; // Darker asphalt base
+        imgData.data[i] = val;
+        imgData.data[i+1] = val;
+        imgData.data[i+2] = val;
+        imgData.data[i+3] = 255;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(15, 15);
+    tex.anisotropy = 16;
+    return tex;
+}
 
-// Hemisphere light for sky/ground color variance
-const hemiLight = new THREE.HemisphereLight(0x1a1a2e, 0x000000, 0.6);
+function createRainTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 128);
+    grad.addColorStop(0, 'rgba(180, 200, 255, 0)');
+    grad.addColorStop(0.5, 'rgba(200, 220, 255, 0.8)');
+    grad.addColorStop(1, 'rgba(180, 200, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 32, 128);
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createCloudTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(40, 40, 45, 0.9)');
+    grad.addColorStop(0.4, 'rgba(30, 30, 35, 0.5)');
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createWindowTexture() {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    ctx.fillStyle = '#080808';
+    ctx.fillRect(0, 0, size, size);
+    
+    ctx.fillStyle = '#ffdfaa'; // Warm light
+    // Random grid
+    const rows = Math.floor(Math.random() * 3) + 3;
+    const cols = Math.floor(Math.random() * 2) + 2;
+    
+    const w = (size / cols) - 4;
+    const h = (size / rows) - 2;
+    
+    for(let r=0; r<rows; r++) {
+        for(let c=0; c<cols; c++) {
+            if(Math.random() > 0.4) {
+                 // Add variation
+                 ctx.globalAlpha = 0.5 + Math.random() * 0.5;
+                 ctx.fillRect(c * (size/cols) + 2, r * (size/rows) + 1, w, h);
+            }
+        }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    return tex;
+}
+
+function createFlareTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    const g = ctx.createRadialGradient(32,32,0,32,32,32);
+    g.addColorStop(0,'rgba(255,160,60,1)');
+    g.addColorStop(0.4,'rgba(255,100,20,0.3)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; 
+    ctx.fillRect(0,0,64,64);
+    return new THREE.CanvasTexture(canvas);
+}
+
+const asphaltTex = createNoiseTexture();
+const rainTex = createRainTexture();
+const cloudTex = createCloudTexture();
+const flareTex = createFlareTexture();
+const windowTextures = Array(12).fill(0).map(() => createWindowTexture());
+
+// --- LIGHTING ---
+const hemiLight = new THREE.HemisphereLight(0x1a1a2e, 0x050505, 0.2);
 scene.add(hemiLight);
 
-// --- CITY GENERATION ---
+const moonLight = new THREE.DirectionalLight(0x8899ff, 0.4);
+moonLight.position.set(-50, 80, -30);
+moonLight.castShadow = true;
+moonLight.shadow.mapSize.width = 2048;
+moonLight.shadow.mapSize.height = 2048;
+moonLight.shadow.camera.near = 0.5;
+moonLight.shadow.camera.far = 500;
+const d = 150;
+moonLight.shadow.camera.left = -d;
+moonLight.shadow.camera.right = d;
+moonLight.shadow.camera.top = d;
+moonLight.shadow.camera.bottom = -d;
+moonLight.shadow.bias = -0.0001;
+scene.add(moonLight);
+
+const lightning = new THREE.PointLight(0xaaddff, 0, 2000);
+lightning.position.set(0, 200, 0);
+scene.add(lightning);
+
+// --- WORLD ---
 
 // Ground
-const planeGeometry = new THREE.PlaneGeometry(2000, 2000);
-const planeMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x111111,
-    roughness: 0.8,
+const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x0a0a0a,
+    roughness: 0.02, // Extremely wet/glossy
+    metalness: 0.5,
+    roughnessMap: asphaltTex,
+    bumpMap: asphaltTex,
+    bumpScale: 0.02
+});
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// City
+const cityGroup = new THREE.Group();
+scene.add(cityGroup);
+
+const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+buildingGeo.translate(0, 0.5, 0);
+
+const buildingMatBase = new THREE.MeshStandardMaterial({
+    color: 0x151520,
+    roughness: 0.3,
     metalness: 0.2
 });
-const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-plane.rotation.x = -Math.PI / 2;
-scene.add(plane);
 
-// Buildings
-const buildingGeometry = new THREE.BoxGeometry(1, 1, 1);
-// Move pivot to bottom of box so scaling works upwards
-buildingGeometry.translate(0, 0.5, 0);
+const blockSize = 30;
+const streetWidth = 10;
+const range = CONFIG.citySize;
 
-const buildingMaterial = new THREE.MeshStandardMaterial({
-    color: 0x2a2a35,
-    roughness: 0.6,
-    metalness: 0.1,
-    flatShading: true
+// Pre-create flare material
+const flareMat = new THREE.SpriteMaterial({ 
+    map: flareTex, 
+    blending: THREE.AdditiveBlending,
+    color: 0xffaa66,
+    transparent: true
 });
 
-const buildingCount = 400;
-const minRadius = 15; // Clear area around camera
-const maxRadius = 300;
-
-for (let i = 0; i < buildingCount; i++) {
-    const mesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
-    
-    // Random position in polar coordinates
-    const angle = Math.random() * Math.PI * 2;
-    const radius = Math.sqrt(Math.random()) * (maxRadius - minRadius) + minRadius;
-    
-    const x = Math.cos(angle) * radius;
-    const z = Math.sin(angle) * radius;
-    
-    // Random dimensions
-    const width = Math.random() * 5 + 2;
-    const depth = Math.random() * 5 + 2;
-    const height = Math.random() * 40 + 5; // Height 5 to 45
-    
-    mesh.position.set(x, 0, z);
-    mesh.scale.set(width, height, depth);
-    
-    // Random rotation
-    mesh.rotation.y = Math.random() * Math.PI;
-    
-    scene.add(mesh);
-    
-    // Add simple "windows" (emissive dots)
-    if (Math.random() > 0.3) {
-        const windowGeo = new THREE.PlaneGeometry(0.5, 0.5);
-        const windowMat = new THREE.MeshBasicMaterial({ color: 0xffffaa, side: THREE.DoubleSide });
+for (let x = -range; x <= range; x += blockSize) {
+    for (let z = -range; z <= range; z += blockSize) {
+        // Safe zone
+        if (Math.abs(x) < 20 && Math.abs(z) < 20) continue;
         
-        // Add a few windows per building
-        const floors = Math.floor(height / 3);
-        for(let j=1; j<floors; j++) {
-            if(Math.random() > 0.4) continue; // Sparse windows
+        // Random buildings
+        if (Math.random() > 0.15) { // 85% chance of building
+            const h = 10 + Math.random() * 50 + (Math.random() > 0.9 ? 70 : 0);
+            const w = blockSize - streetWidth;
+            const d = blockSize - streetWidth;
             
-            const win = new THREE.Mesh(windowGeo, windowMat);
-            // Position on one face
-            // Simplified: Just put some random lights floating near building surface
-            // Better: Add them as children, but scaling parent scales children.
-            // Let's just place them in world space for simplicity or skip for now to save complexity.
+            let mat = buildingMatBase;
+            // Add windows?
+            if (Math.random() > 0.2) {
+                mat = buildingMatBase.clone();
+                mat.emissive = new THREE.Color(0xffffff);
+                mat.emissiveMap = windowTextures[Math.floor(Math.random() * windowTextures.length)];
+                mat.emissiveIntensity = 0.6;
+                // Scale texture
+                mat.emissiveMap.repeat.set(1, h / 8); 
+                mat.emissiveMap.wrapT = THREE.RepeatWrapping;
+            }
+            
+            const mesh = new THREE.Mesh(buildingGeo, mat);
+            mesh.position.set(x, 0, z);
+            mesh.scale.set(w, h, d);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            cityGroup.add(mesh);
+        }
+        
+        // Street Lights at intersections (roughly)
+        if (Math.random() > 0.75) {
+            const px = x - streetWidth/2;
+            const pz = z - streetWidth/2;
+            
+            // Pole
+            const poleH = 6;
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.1, poleH),
+                new THREE.MeshBasicMaterial({ color: 0x111 })
+            );
+            pole.position.set(px, poleH/2, pz);
+            cityGroup.add(pole);
+            
+            // Light
+            const spot = new THREE.SpotLight(0xffaa44, 1.5, 35, 0.8, 0.5, 1);
+            spot.position.set(0, poleH/2, 0);
+            spot.target.position.set(0, -10, 0);
+            pole.add(spot);
+            pole.add(spot.target);
+            
+            // Visible flare
+            const flare = new THREE.Sprite(flareMat);
+            flare.position.set(0, poleH/2, 0);
+            flare.scale.set(6, 6, 1);
+            pole.add(flare);
         }
     }
 }
 
-// Street Lights (Simple spheres)
-for (let i = 0; i < 20; i++) {
-    const light = new THREE.PointLight(0xffaa00, 1, 30);
-    const angle = Math.random() * Math.PI * 2;
-    const radius = Math.random() * 50 + 10;
-    light.position.set(Math.cos(angle) * radius, 4, Math.sin(angle) * radius);
-    scene.add(light);
-    
-    // Pole
-    const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 4);
-    const poleMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    const pole = new THREE.Mesh(poleGeo, poleMat);
-    pole.position.set(light.position.x, 2, light.position.z);
-    scene.add(pole);
-}
-
-
-// --- WEATHER SYSTEMS ---
+// --- PARTICLES ---
 
 // Rain
-const rainCount = 15000;
-const rainGeometry = new THREE.BufferGeometry();
-const rainPositions = new Float32Array(rainCount * 3);
-const rainVelocities = [];
+const rainGeo = new THREE.BufferGeometry();
+const rainCount = CONFIG.rainCount;
+const rainPos = new Float32Array(rainCount * 3);
+const rainVel = new Float32Array(rainCount);
 
-for (let i = 0; i < rainCount; i++) {
-    rainPositions[i * 3] = (Math.random() - 0.5) * 400; // x
-    rainPositions[i * 3 + 1] = Math.random() * 200;     // y
-    rainPositions[i * 3 + 2] = (Math.random() - 0.5) * 400; // z
-    rainVelocities.push(0.5 + Math.random() * 0.5); // speed
+for(let i=0; i<rainCount; i++) {
+    rainPos[i*3] = (Math.random() - 0.5) * 600;
+    rainPos[i*3+1] = Math.random() * 200;
+    rainPos[i*3+2] = (Math.random() - 0.5) * 600;
+    rainVel[i] = CONFIG.rainSpeed + Math.random() * 40;
 }
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
 
-rainGeometry.setAttribute('position', new THREE.BufferAttribute(rainPositions, 3));
-
-const rainMaterial = new THREE.PointsMaterial({
-    color: 0xaaaaaa,
-    size: 0.2,
+const rainMat = new THREE.PointsMaterial({
+    color: 0x88aaff,
+    size: 2.5,
+    map: rainTex,
     transparent: true,
-    opacity: 0.6
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
 });
-
-const rainSystem = new THREE.Points(rainGeometry, rainMaterial);
+const rainSystem = new THREE.Points(rainGeo, rainMat);
 scene.add(rainSystem);
 
 // Clouds
-const cloudGroup = new THREE.Group();
-scene.add(cloudGroup);
-
-const cloudGeo = new THREE.IcosahedronGeometry(1, 0);
-const cloudMat = new THREE.MeshStandardMaterial({
-    color: 0x888899,
-    flatShading: true,
-    opacity: 0.6,
-    transparent: true
+const clouds = new THREE.Group();
+scene.add(clouds);
+const cloudSpriteMat = new THREE.SpriteMaterial({
+    map: cloudTex,
+    color: 0x666677, // Blue-ish grey
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false
 });
 
-function createCloud(x, z) {
-    const cloud = new THREE.Group();
-    const blobs = Math.floor(Math.random() * 5) + 3;
-    
-    for(let i=0; i<blobs; i++) {
-        const mesh = new THREE.Mesh(cloudGeo, cloudMat);
-        mesh.position.set(
-            (Math.random() - 0.5) * 10,
-            (Math.random() - 0.5) * 5,
-            (Math.random() - 0.5) * 10
-        );
-        mesh.scale.setScalar(Math.random() * 5 + 2);
-        cloud.add(mesh);
-    }
-    
-    cloud.position.set(x, Math.random() * 20 + 60, z); // Height 60-80
-    return cloud;
+for(let i=0; i<CONFIG.cloudCount; i++) {
+    const c = new THREE.Sprite(cloudSpriteMat.clone()); // Cloning to allow individual tinting if needed later, but here just for safety
+    c.position.set(
+        (Math.random()-0.5)*800,
+        100 + Math.random() * 40,
+        (Math.random()-0.5)*800
+    );
+    c.scale.setScalar(80 + Math.random() * 80);
+    c.userData = { 
+        speed: CONFIG.windSpeed * (0.8 + Math.random() * 0.4) 
+    };
+    clouds.add(c);
 }
 
-// Generate clouds
-for(let i=0; i<30; i++) {
-    const x = (Math.random() - 0.5) * 600;
-    const z = (Math.random() - 0.5) * 600;
-    cloudGroup.add(createCloud(x, z));
-}
-
-
-// --- ANIMATION LOOP ---
-
+// --- ANIMATION ---
 const clock = new THREE.Clock();
+let lightningTimer = 0;
 
 function animate() {
     requestAnimationFrame(animate);
-    
     const delta = clock.getDelta();
-    const time = clock.getElapsedTime();
     
     controls.update();
     
-    // Animate Rain
-    const positions = rainSystem.geometry.attributes.position.array;
-    for (let i = 0; i < rainCount; i++) {
-        // Update Y
-        positions[i * 3 + 1] -= rainVelocities[i];
+    // Rain
+    const pos = rainSystem.geometry.attributes.position.array;
+    for(let i=0; i<rainCount; i++) {
+        pos[i*3+1] -= rainVel[i] * delta; // Y
+        pos[i*3] -= CONFIG.windSpeed * delta * 2; // Wind X
         
-        // Reset if below ground
-        if (positions[i * 3 + 1] < 0) {
-            positions[i * 3 + 1] = 200;
+        if (pos[i*3+1] < 0) {
+            pos[i*3+1] = 150 + Math.random() * 50;
+            pos[i*3] = (Math.random() - 0.5) * 600;
+            pos[i*3+2] = (Math.random() - 0.5) * 600;
         }
     }
     rainSystem.geometry.attributes.position.needsUpdate = true;
     
-    // Animate Clouds (Slow drift)
-    cloudGroup.children.forEach(cloud => {
-        cloud.position.x += 0.5 * delta;
-        if(cloud.position.x > 300) cloud.position.x = -300;
+    // Clouds
+    clouds.children.forEach(c => {
+        c.position.x += c.userData.speed * delta;
+        if (c.position.x > 400) c.position.x = -400;
     });
     
-    // Subtle lightning effect (random flash)
-    if (Math.random() > 0.99) {
-        scene.background = new THREE.Color(0x333344);
-        setTimeout(() => {
-            scene.background = new THREE.Color(0x1a1a2e);
-        }, 50);
+    // Lightning
+    if (Math.random() > 0.993 && lightningTimer <= 0) {
+        lightningTimer = 0.1 + Math.random() * 0.3;
+        lightning.position.x = (Math.random()-0.5) * 400;
+        lightning.position.z = (Math.random()-0.5) * 400;
+        
+        // Random color shift for lightning
+        lightning.color.setHSL(0.6, 0.8, 0.8);
+    }
+    
+    if (lightningTimer > 0) {
+        lightningTimer -= delta;
+        const intensity = Math.random() * 5 + 5; // Bright!
+        lightning.intensity = intensity;
+        
+        // Flash sky
+        const flashIntensity = intensity * 0.05;
+            bgCol >> 16 & 255 / 255 + flashIntensity, 
+            bgCol >> 8 & 255 / 255 + flashIntensity, 
+            bgCol & 255 / 255 + flashIntensity
+        );
+        // Simple hack: just set to brighter blue
+        if(Math.random() > 0.5) {
+            scene.background.setHex(0x1a1a35);
+            scene.fog.color.setHex(0x1a1a35);
+        } else {
+             scene.background.setHex(bgCol);
+             scene.fog.color.setHex(bgCol);
+        }
+    } else {
+        lightning.intensity = 0;
+        scene.background.setHex(bgCol);
+        scene.fog.color.setHex(bgCol);
     }
     
     renderer.render(scene, camera);
 }
 
-// Handle Resize
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
 
 animate();
