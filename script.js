@@ -1,524 +1,741 @@
-// --- CONFIGURATION ---
+// =============================================
+//  ULTRA-REALISTIC 3D WEATHER CITY
+//  Three.js r128 — No build step required
+// =============================================
+
+// --- CONFIG ---
 const CONFIG = {
-    rainCount: 20000,
-    cloudCount: 50,
-    fogDensity: 0.007, 
-    rainSpeed: 160,
-    windSpeed: 15,
-    citySize: 600,
-    blockSize: 30,
-    streetWidth: 10
+    rainCount: 25000,
+    cloudCount: 80,
+    fogDensity: 0.005,
+    rainSpeed: 180,
+    windSpeed: 8,
+    cityRadius: 700,
+    blockSize: 28,
+    streetWidth: 7,
 };
 
-// --- SCENE SETUP ---
-const scene = new THREE.Scene();
-const bgCol = 0x050510;
-scene.background = new THREE.Color(bgCol);
-scene.fog = new THREE.FogExp2(bgCol, CONFIG.fogDensity);
-
-const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 1.8, 0);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+// --- RENDERER ---
+const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance',
+    logarithmicDepthBuffer: true,
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.4;
+renderer.physicallyCorrectLights = true;
 document.body.appendChild(renderer.domElement);
 
+// --- SCENE ---
+const scene = new THREE.Scene();
+const SKY_COLOR = 0x08090f;
+scene.background = new THREE.Color(SKY_COLOR);
+scene.fog = new THREE.FogExp2(SKY_COLOR, CONFIG.fogDensity);
+
+// --- CAMERA ---
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 2000);
+camera.position.set(0, 1.7, 0);
+
+// --- CONTROLS ---
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.05;
+controls.dampingFactor = 0.04;
 controls.enableZoom = false;
 controls.enablePan = false;
-controls.rotateSpeed = -0.3;
-controls.target.set(0, 1.8, 1);
+controls.rotateSpeed = -0.25;
+controls.target.set(0, 1.7, 0.01);
+controls.minPolarAngle = Math.PI * 0.15;
+controls.maxPolarAngle = Math.PI * 0.75;
 controls.update();
 
-// --- TEXTURE GENERATION ---
+// =============================================
+//  PROCEDURAL TEXTURES — High Resolution
+// =============================================
 
-// High-res asphalt with noise
-function createNoiseTexture() {
-    const size = 1024;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    
-    // Base
-    ctx.fillStyle = '#111111';
+// High-resolution window facade texture
+function makeWindowTex(rows, cols, size) {
+    size = size || 512;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+
+    // Dark building face
+    ctx.fillStyle = '#0a0a0e';
     ctx.fillRect(0, 0, size, size);
-    
-    // Noise
-    const imgData = ctx.getImageData(0, 0, size, size);
-    for (let i = 0; i < imgData.data.length; i += 4) {
-        const val = Math.random() * 40; 
-        imgData.data[i] += val;
-        imgData.data[i+1] += val;
-        imgData.data[i+2] += val;
-    }
-    ctx.putImageData(imgData, 0, 0);
-    
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(20, 20);
-    tex.anisotropy = 16;
-    return tex;
-}
 
-// Better rain streak
-function createRainTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 32;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    
-    const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0, 'rgba(200, 220, 255, 0)');
-    grad.addColorStop(0.2, 'rgba(200, 220, 255, 0.1)');
-    grad.addColorStop(0.5, 'rgba(220, 240, 255, 0.6)');
-    grad.addColorStop(0.8, 'rgba(200, 220, 255, 0.1)');
-    grad.addColorStop(1, 'rgba(200, 220, 255, 0)');
-    
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 32, 256);
-    return new THREE.CanvasTexture(canvas);
-}
+    const cw = Math.floor(size / cols);
+    const ch = Math.floor(size / rows);
+    const pw = Math.max(2, Math.floor(cw * 0.65));
+    const ph = Math.max(2, Math.floor(ch * 0.6));
+    const ox = Math.floor((cw - pw) / 2);
+    const oy = Math.floor((ch - ph) / 2);
 
-// Soft cloud
-function createCloudTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    
-    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    grad.addColorStop(0, 'rgba(60, 60, 70, 0.7)');
-    grad.addColorStop(0.5, 'rgba(40, 40, 50, 0.3)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 256, 256);
-    return new THREE.CanvasTexture(canvas);
-}
-
-// Window light pattern
-function createWindowTexture(hue) {
-    const size = 128;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    
-    ctx.fillStyle = '#050505';
-    ctx.fillRect(0, 0, size, size);
-    
-    // Windows
-    const rows = 8;
-    const cols = 4;
-    const w = (size / cols) - 4;
-    const h = (size / rows) - 2;
-    
-    for(let r=0; r<rows; r++) {
-        for(let c=0; c<cols; c++) {
-            if(Math.random() > 0.3) {
-                 const intensity = 0.5 + Math.random() * 0.5;
-                 // Varied warm/cool lights
-                 const isWarm = Math.random() > 0.3;
-                 ctx.fillStyle = isWarm 
-                    ? `rgba(255, 220, 150, ${intensity})` 
-                    : `rgba(200, 230, 255, ${intensity})`;
-                 
-                 ctx.fillRect(c * (size/cols) + 2, r * (size/rows) + 1, w, h);
+    for (let r = 0; r < rows; r++) {
+        for (let col2 = 0; col2 < cols; col2++) {
+            const lit = Math.random() > 0.35;
+            if (!lit) continue;
+            const warm = Math.random() > 0.25;
+            const bright = 0.55 + Math.random() * 0.45;
+            if (warm) {
+                ctx.fillStyle = `rgba(255,${Math.floor(200 + Math.random()*50)},${Math.floor(100 + Math.random()*80)},${bright})`;
+            } else {
+                ctx.fillStyle = `rgba(${Math.floor(190+Math.random()*50)},${Math.floor(210+Math.random()*40)},255,${bright})`;
             }
+            ctx.fillRect(col2 * cw + ox, r * ch + oy, pw, ph);
+
+            // Subtle glow bleed
+            const grd = ctx.createRadialGradient(
+                col2 * cw + ox + pw/2, r * ch + oy + ph/2, 0,
+                col2 * cw + ox + pw/2, r * ch + oy + ph/2, Math.max(pw, ph) * 1.5
+            );
+            grd.addColorStop(0, warm ? 'rgba(255,180,80,0.12)' : 'rgba(180,220,255,0.12)');
+            grd.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(Math.max(0, col2*cw-pw), Math.max(0, r*ch-ph), cw*3, ch*3);
         }
     }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.magFilter = THREE.NearestFilter;
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return tex;
 }
 
-// Streetlight flare
-function createFlareTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    
-    // Soft outer glow
-    let g = ctx.createRadialGradient(64,64,0,64,64,64);
-    g.addColorStop(0,'rgba(255,180,100,0.8)');
-    g.addColorStop(0.2,'rgba(255,140,50,0.2)');
-    g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g; 
-    ctx.fillRect(0,0,128,128);
-    
-    // Sharp core
-    g = ctx.createRadialGradient(64,64,0,64,64,10);
-    g.addColorStop(0,'rgba(255,255,255,1)');
-    g.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=g;
-    ctx.fillRect(0,0,128,128);
-    
-    return new THREE.CanvasTexture(canvas);
+// Concrete/facade side texture
+function makeConcreteTex() {
+    const size = 512;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#1a1c22';
+    ctx.fillRect(0, 0, size, size);
+    // Fine noise
+    const img = ctx.getImageData(0, 0, size, size);
+    for (let i = 0; i < img.data.length; i += 4) {
+        const v = (Math.random() * 20) - 10;
+        img.data[i] = Math.max(0, Math.min(255, img.data[i] + v));
+        img.data[i+1] = Math.max(0, Math.min(255, img.data[i+1] + v));
+        img.data[i+2] = Math.max(0, Math.min(255, img.data[i+2] + v));
+    }
+    ctx.putImageData(img, 0, 0);
+    // Horizontal panel lines
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < size; y += 32) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
 }
 
-// Car headlight/taillight texture
-function createLightTexture(color) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    const g = ctx.createRadialGradient(32,32,0,32,32,32);
-    g.addColorStop(0, color);
-    g.addColorStop(0.5, color.replace('1)', '0.2)'));
+// Wet asphalt
+function makeAsphaltTex() {
+    const size = 1024;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0e0e0e';
+    ctx.fillRect(0, 0, size, size);
+    const img = ctx.getImageData(0, 0, size, size);
+    for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random() * 28;
+        img.data[i] += v; img.data[i+1] += v; img.data[i+2] += v;
+    }
+    ctx.putImageData(img, 0, 0);
+    // Road markings
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y < size; y += 64) {
+        ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(size,y); ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(30, 30);
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return tex;
+}
+
+// Rain streak
+function makeRainTex() {
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = 64;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 64);
+    g.addColorStop(0, 'rgba(180,210,255,0)');
+    g.addColorStop(0.3, 'rgba(200,225,255,0.55)');
+    g.addColorStop(0.6, 'rgba(220,240,255,0.85)');
+    g.addColorStop(1, 'rgba(180,210,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 4, 64);
+    return new THREE.CanvasTexture(c);
+}
+
+// Soft cloud puff
+function makeCloudTex() {
+    const size = 256;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(128,128,0,128,128,128);
+    g.addColorStop(0, 'rgba(50,55,70,0.9)');
+    g.addColorStop(0.4, 'rgba(35,38,50,0.5)');
+    g.addColorStop(0.75, 'rgba(20,22,30,0.15)');
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
-    ctx.fillRect(0,0,64,64);
-    return new THREE.CanvasTexture(canvas);
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(c);
 }
 
-const asphaltTex = createNoiseTexture();
-const rainTex = createRainTexture();
-const cloudTex = createCloudTexture();
-const flareTex = createFlareTexture();
-const headLightTex = createLightTexture('rgba(255, 240, 200, 1)');
-const tailLightTex = createLightTexture('rgba(255, 20, 20, 1)');
-const windowTextures = Array(8).fill(0).map(() => createWindowTexture());
+// Flare / streetlight glow
+function makeGlowTex(r, g2, b) {
+    const size = 128;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    const grd = ctx.createRadialGradient(64,64,0,64,64,64);
+    grd.addColorStop(0, `rgba(${r},${g2},${b},1)`);
+    grd.addColorStop(0.15, `rgba(${r},${g2},${b},0.5)`);
+    grd.addColorStop(0.5, `rgba(${Math.floor(r*0.7)},${Math.floor(g2*0.6)},${Math.floor(b*0.4)},0.1)`);
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(c);
+}
 
-// --- LIGHTING ---
-const ambientLight = new THREE.HemisphereLight(0x202040, 0x101015, 1.5); // Boosted base brightness
-scene.add(ambientLight);
+// Puddle / wet surface reflection
+function makePuddleTex() {
+    const size = 256;
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 18; i++) {
+        const px = Math.random() * size;
+        const py = Math.random() * size;
+        const pr = 20 + Math.random() * 60;
+        const g = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        g.addColorStop(0, 'rgba(30,60,90,0.35)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.ellipse(px, py, pr, pr * 0.4, Math.random() * Math.PI, 0, Math.PI*2);
+        ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(5, 5);
+    return tex;
+}
 
-const moonLight = new THREE.DirectionalLight(0xaaccff, 0.5);
-moonLight.position.set(-100, 200, -50);
-moonLight.castShadow = true;
-moonLight.shadow.mapSize.width = 2048;
-moonLight.shadow.mapSize.height = 2048;
-moonLight.shadow.camera.near = 0.5;
-moonLight.shadow.camera.far = 800;
-const d = 300;
-moonLight.shadow.camera.left = -d;
-moonLight.shadow.camera.right = d;
-moonLight.shadow.camera.top = d;
-moonLight.shadow.camera.bottom = -d;
-moonLight.shadow.bias = -0.0005;
-scene.add(moonLight);
+// Pre-generate texture pools
+const windowTexPool = [];
+for (let i = 0; i < 12; i++) {
+    const rows = 8 + Math.floor(Math.random() * 12);
+    const cols = 3 + Math.floor(Math.random() * 5);
+    windowTexPool.push(makeWindowTex(rows, cols));
+}
+const concreteTex  = makeConcreteTex();
+const asphaltTex   = makeAsphaltTex();
+const rainTex      = makeRainTex();
+const cloudTex     = makeCloudTex();
+const glowAmber    = makeGlowTex(255, 160, 60);
+const glowBlue     = makeGlowTex(80, 180, 255);
+const glowRed      = makeGlowTex(255, 30, 30);
+const puddleTex    = makePuddleTex();
 
-const lightning = new THREE.PointLight(0xaaddff, 0, 5000);
-lightning.position.set(0, 500, 0);
-scene.add(lightning);
+// =============================================
+//  LIGHTING
+// =============================================
+const hemi = new THREE.HemisphereLight(0x1a2035, 0x050508, 2.0);
+scene.add(hemi);
 
-// Local intersection lights (Just a few to light the immediate area without killing shaders)
-const intersectionLights = [];
-const localLightPositions = [
-    {x: 10, z: 10}, {x: -10, z: 10}, {x: 10, z: -10}, {x: -10, z: -10}
+const moon = new THREE.DirectionalLight(0x8899bb, 0.6);
+moon.position.set(-150, 300, -80);
+moon.castShadow = true;
+moon.shadow.mapSize.set(4096, 4096);
+moon.shadow.camera.near = 0.5;
+moon.shadow.camera.far = 1200;
+const sd = 400;
+moon.shadow.camera.left   = -sd; moon.shadow.camera.right = sd;
+moon.shadow.camera.top    =  sd; moon.shadow.camera.bottom= -sd;
+moon.shadow.bias = -0.0003;
+moon.shadow.normalBias = 0.02;
+scene.add(moon);
+
+// Lightning point
+const lightningLight = new THREE.PointLight(0xbbddff, 0, 3000);
+lightningLight.position.set(0, 600, 0);
+scene.add(lightningLight);
+
+// Local warm street lights (just 6 near the player)
+const nearLightOffsets = [
+    [15, 0], [-15, 0], [0, 15], [0, -15], [20, 20], [-20, -20]
 ];
-localLightPositions.forEach(pos => {
-    const pl = new THREE.PointLight(0xffaa44, 2, 40);
-    pl.position.set(pos.x, 8, pos.z);
-    pl.castShadow = false; // Too expensive
+nearLightOffsets.forEach(([lx, lz]) => {
+    const pl = new THREE.PointLight(0xff9944, 1.5, 35, 2);
+    pl.position.set(lx, 7, lz);
     scene.add(pl);
-    intersectionLights.push(pl);
 });
 
-
-// --- WORLD ---
-
-// Ground
+// =============================================
+//  GROUND (Wet Asphalt)
+// =============================================
 const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x111111,
-    roughness: 0.1, 
-    metalness: 0.6,
+    color: 0x101012,
+    roughness: 0.08,
+    metalness: 0.85,
+    map: asphaltTex,
     roughnessMap: asphaltTex,
-    bumpMap: asphaltTex,
-    bumpScale: 0.05
+    envMapIntensity: 1.5,
 });
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), groundMat);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000, 1, 1), groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-// City
+// Puddle overlay
+const puddleMat = new THREE.MeshStandardMaterial({
+    color: 0x223344,
+    roughness: 0.0,
+    metalness: 1.0,
+    transparent: true,
+    opacity: 0.35,
+    map: puddleTex,
+});
+const puddle = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), puddleMat);
+puddle.rotation.x = -Math.PI / 2;
+puddle.position.y = 0.01;
+scene.add(puddle);
+
+// =============================================
+//  CITY GENERATION — Detailed Buildings
+// =============================================
 const cityGroup = new THREE.Group();
 scene.add(cityGroup);
 
-const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
-buildingGeo.translate(0, 0.5, 0);
+// Shared geometries
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+boxGeo.translate(0, 0.5, 0);
 
-const buildingMatBase = new THREE.MeshStandardMaterial({
-    color: 0x222225,
-    roughness: 0.2,
-    metalness: 0.3
-});
+// Create a detailed building
+function makeBuilding(x, z, bw, bd, h) {
+    const group = new THREE.Group();
 
-const flareMat = new THREE.SpriteMaterial({ 
-    map: flareTex, 
-    blending: THREE.AdditiveBlending,
-    color: 0xffaa66,
-    transparent: true,
-    depthWrite: false
-});
+    // --- Main tower ---
+    const winTex = windowTexPool[Math.floor(Math.random() * windowTexPool.length)];
+    const wt2 = windowTexPool[Math.floor(Math.random() * windowTexPool.length)];
 
-const poleGeo = new THREE.CylinderGeometry(0.15, 0.15, 8);
-const poleMat = new THREE.MeshStandardMaterial({ color: 0x222 });
-const bulbGeo = new THREE.SphereGeometry(0.3, 8, 8);
-const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffcc88 });
+    const faceW = winTex.clone(); faceW.repeat.set(bw / 5, h / 8); faceW.needsUpdate = true;
+    const faceD = wt2.clone();   faceD.repeat.set(bd / 5, h / 8); faceD.needsUpdate = true;
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.6, metalness: 0.3, map: concreteTex });
 
-const blockSize = CONFIG.blockSize;
-const streetWidth = CONFIG.streetWidth;
-const range = CONFIG.citySize;
+    const sideMat = new THREE.MeshStandardMaterial({
+        color: 0x1a1c24,
+        roughness: 0.3,
+        metalness: 0.5,
+        emissiveMap: winTex,
+        emissive: new THREE.Color(1, 1, 1),
+        emissiveIntensity: 0.65,
+        map: concreteTex,
+    });
+    const sideMat2 = sideMat.clone();
+    sideMat2.emissiveMap = wt2;
 
-const roads = []; // Store road segments for traffic
+    // Each face gets its own material so we can tile correctly
+    const mats = [sideMat2, sideMat2, roofMat, roofMat, sideMat, sideMat];
+    mats[0].emissiveMap = wt2; mats[0].needsUpdate = true;
+    mats[1].emissiveMap = wt2; mats[1].needsUpdate = true;
+    mats[4].emissiveMap = winTex; mats[4].needsUpdate = true;
+    mats[5].emissiveMap = winTex; mats[5].needsUpdate = true;
 
-// Create city grid
-for (let x = -range; x <= range; x += blockSize) {
-    // Add road segments for X axis
-    roads.push({ x: x - streetWidth/2, z: 0, dir: 'z' }); // Vertical road at this X
-    
-    for (let z = -range; z <= range; z += blockSize) {
-        // Safe zone (plaza)
-        if (Math.abs(x) < 25 && Math.abs(z) < 25) continue;
-        
-        // Random buildings
-        if (Math.random() > 0.1) {
-            const h = 10 + Math.random() * 60 + (Math.random() > 0.9 ? 80 : 0);
-            const w = blockSize - streetWidth;
-            const d = blockSize - streetWidth;
-            
-            let mat = buildingMatBase;
-            if (Math.random() > 0.25) {
-                mat = buildingMatBase.clone();
-                mat.emissive = new THREE.Color(0xffffff);
-                mat.emissiveMap = windowTextures[Math.floor(Math.random() * windowTextures.length)];
-                mat.emissiveIntensity = 0.8;
-                mat.emissiveMap.repeat.set(1, h / 10); 
-                mat.emissiveMap.wrapT = THREE.RepeatWrapping;
-            }
-            
-            const mesh = new THREE.Mesh(buildingGeo, mat);
-            mesh.position.set(x, 0, z);
-            mesh.scale.set(w, h, d);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            cityGroup.add(mesh);
+    const towerGeo = new THREE.BoxGeometry(bw, h, bd);
+    towerGeo.translate(0, h / 2, 0);
+    const tower = new THREE.Mesh(towerGeo, mats);
+    tower.castShadow = true;
+    tower.receiveShadow = true;
+    group.add(tower);
+
+    // --- Setback (architectural step) — taller buildings only ---
+    if (h > 30 && Math.random() > 0.4) {
+        const sh = 4 + Math.random() * 8;
+        const sw = bw + 1.5 + Math.random() * 2;
+        const sd = bd + 1.5 + Math.random() * 2;
+        const setbackMat = new THREE.MeshStandardMaterial({ color: 0x151820, roughness: 0.5, metalness: 0.4, map: concreteTex });
+        const setback = new THREE.Mesh(new THREE.BoxGeometry(sw, sh, sd), setbackMat);
+        setback.position.y = sh / 2;
+        setback.castShadow = true;
+        group.add(setback);
+    }
+
+    // --- Rooftop details ---
+    if (Math.random() > 0.5) {
+        // AC units / water tank
+        const detH = 1.5 + Math.random() * 3;
+        const detW = 1 + Math.random() * 2;
+        const detMat = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.7, metalness: 0.2 });
+        for (let di = 0; di < 2 + Math.floor(Math.random() * 3); di++) {
+            const det = new THREE.Mesh(new THREE.BoxGeometry(detW, detH, detW * 0.8), detMat);
+            det.position.set(
+                (Math.random() - 0.5) * (bw * 0.6),
+                h + detH / 2,
+                (Math.random() - 0.5) * (bd * 0.6)
+            );
+            group.add(det);
         }
-        
-        // Street Lights
-        // Place them at corners of blocks
-        if (Math.random() > 0.6) {
-            const px = x - streetWidth/2;
-            const pz = z - streetWidth/2;
-            
-            const pole = new THREE.Mesh(poleGeo, poleMat);
-            pole.position.set(px, 4, pz);
-            cityGroup.add(pole);
-            
-            // Glowing bulb
-            const bulb = new THREE.Mesh(bulbGeo, bulbMat);
-            bulb.position.set(0, 4, 0); // Relative to pole center
-            pole.add(bulb);
-            
-            // Flare Sprite
-            const flare = new THREE.Sprite(flareMat);
-            flare.position.set(0, 4, 0);
-            flare.scale.set(12, 12, 1);
-            pole.add(flare);
+        // Antenna / spire on skyscrapers
+        if (h > 50 && Math.random() > 0.5) {
+            const spireGeo = new THREE.CylinderGeometry(0.07, 0.2, h * 0.25, 6);
+            const spire = new THREE.Mesh(spireGeo, new THREE.MeshStandardMaterial({ color: 0x555566, roughness: 0.4, metalness: 0.8 }));
+            spire.position.set(0, h + h * 0.125, 0);
+            group.add(spire);
+            // Red beacon
+            if (Math.random() > 0.5) {
+                const beaconGeo = new THREE.SphereGeometry(0.18, 8, 8);
+                const beacon = new THREE.Mesh(beaconGeo, new THREE.MeshBasicMaterial({ color: 0xff2222 }));
+                beacon.position.set(0, h + h * 0.25 + 0.2, 0);
+                group.add(beacon);
+            }
+        }
+    }
+
+    // --- Cornice / ledge ---
+    const corniceH = 0.4;
+    const corniceGeo = new THREE.BoxGeometry(bw + 0.4, corniceH, bd + 0.4);
+    const corniceMat = new THREE.MeshStandardMaterial({ color: 0x282830, roughness: 0.5, metalness: 0.6 });
+    const cornice = new THREE.Mesh(corniceGeo, corniceMat);
+    cornice.position.y = h + corniceH / 2;
+    group.add(cornice);
+
+    // Floor ledges every ~12 units for tall buildings
+    if (h > 25) {
+        const ledgeGeo = new THREE.BoxGeometry(bw + 0.2, 0.25, bd + 0.2);
+        for (let ly = 12; ly < h - 2; ly += 12 + Math.random() * 4) {
+            const ledge = new THREE.Mesh(ledgeGeo, corniceMat);
+            ledge.position.y = ly;
+            group.add(ledge);
+        }
+    }
+
+    group.position.set(x, 0, z);
+    return group;
+}
+
+// Grid-based city layout
+const bs = CONFIG.blockSize;
+const sw = CONFIG.streetWidth;
+const cr = CONFIG.cityRadius;
+
+const streetLightPositions = [];
+
+for (let x = -cr; x <= cr; x += bs) {
+    for (let z = -cr; z <= cr; z += bs) {
+        // Clear zone around player start
+        if (Math.abs(x) < bs * 1.5 && Math.abs(z) < bs * 1.5) continue;
+
+        if (Math.random() > 0.08) {
+            const bw = bs - sw - (Math.random() > 0.3 ? 0 : Math.random() * 4);
+            const bd = bs - sw - (Math.random() > 0.3 ? 0 : Math.random() * 4);
+            const h = 6 + Math.pow(Math.random(), 0.7) * 70 + (Math.random() > 0.88 ? 50 + Math.random() * 60 : 0);
+            cityGroup.add(makeBuilding(x, z, Math.max(4, bw), Math.max(4, bd), Math.max(6, h)));
+        }
+
+        // Street lights at block corners
+        if (Math.abs(x) < cr - bs && Math.abs(z) < cr - bs && Math.random() > 0.45) {
+            streetLightPositions.push([x - sw / 2 - 1, z - sw / 2 - 1]);
         }
     }
 }
 
-// --- TRAFFIC SYSTEM ---
+// =============================================
+//  STREET LIGHTS — Detailed poles
+// =============================================
+const poleGeo = new THREE.CylinderGeometry(0.08, 0.12, 7.5, 7);
+const poleMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1f, roughness: 0.5, metalness: 0.7 });
+const armGeo  = new THREE.CylinderGeometry(0.05, 0.05, 2, 6);
+const bulbGeo = new THREE.SphereGeometry(0.2, 8, 6);
+const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffcc88 });
+const flareMat = new THREE.SpriteMaterial({ map: glowAmber, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+
+// Only render lights near the player (within ~200 units) for perf — we still place all of them
+const lightGroup = new THREE.Group();
+scene.add(lightGroup);
+
+streetLightPositions.forEach(([lx, lz]) => {
+    const dist = Math.sqrt(lx * lx + lz * lz);
+    if (dist > 250) return; // Skip very far ones for performance
+
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.set(lx, 3.75, lz);
+    pole.castShadow = false;
+    lightGroup.add(pole);
+
+    // Horizontal arm
+    const arm = new THREE.Mesh(armGeo, poleMat);
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(lx + 1, 7.5, lz);
+    lightGroup.add(arm);
+
+    // Bulb
+    const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+    bulb.position.set(lx + 2, 7.5, lz);
+    lightGroup.add(bulb);
+
+    // Flare
+    const flare = new THREE.Sprite(flareMat.clone());
+    flare.position.set(lx + 2, 7.5, lz);
+    flare.scale.set(8, 8, 1);
+    lightGroup.add(flare);
+});
+
+// =============================================
+//  TRAFFIC
+// =============================================
 const cars = [];
-const carGeo = new THREE.BoxGeometry(1.5, 0.8, 3.5);
-const carMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.2 });
-const carHeadMat = new THREE.SpriteMaterial({ map: headLightTex, color: 0xffffff, blending: THREE.AdditiveBlending });
-const carTailMat = new THREE.SpriteMaterial({ map: tailLightTex, color: 0xff0000, blending: THREE.AdditiveBlending });
+const carColors = [0x223344, 0x1a1a1a, 0x2a2030, 0x0d1520, 0x1c1008, 0x2d1a1a];
+const headFlare = new THREE.SpriteMaterial({ map: glowAmber, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+const tailFlare = new THREE.SpriteMaterial({ map: glowRed,   blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+
+function createCar() {
+    const g = new THREE.Group();
+    const color = carColors[Math.floor(Math.random() * carColors.length)];
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.15, metalness: 0.7 });
+
+    // Body
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.9, 4.2), mat);
+    body.position.y = 0.5;
+    body.castShadow = true;
+    g.add(body);
+
+    // Cabin
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.7, 2.2), mat);
+    cabin.position.set(0, 1.35, -0.2);
+    g.add(cabin);
+
+    // Wheels (simple flat cylinders)
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+    const wheelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.2, 10);
+    const wp = [[0.95,0,1.3],[-0.95,0,1.3],[0.95,0,-1.3],[-0.95,0,-1.3]];
+    wp.forEach(([wx,wy,wz]) => {
+        const w = new THREE.Mesh(wheelGeo, wheelMat);
+        w.rotation.z = Math.PI/2;
+        w.position.set(wx, wy + 0.32, wz);
+        g.add(w);
+    });
+
+    // Headlights
+    const h1 = new THREE.Sprite(headFlare.clone()); h1.scale.set(5,3,1); h1.position.set(0.6,0.6,2.2); g.add(h1);
+    const h2 = new THREE.Sprite(headFlare.clone()); h2.scale.set(5,3,1); h2.position.set(-0.6,0.6,2.2); g.add(h2);
+    // Taillights
+    const t1 = new THREE.Sprite(tailFlare.clone()); t1.scale.set(4,2.5,1); t1.position.set(0.6,0.6,-2.2); g.add(t1);
+    const t2 = new THREE.Sprite(tailFlare.clone()); t2.scale.set(4,2.5,1); t2.position.set(-0.6,0.6,-2.2); g.add(t2);
+
+    return g;
+}
 
 function spawnCar() {
     const isX = Math.random() > 0.5;
-    const roadOffset = (Math.floor(Math.random() * (range/blockSize * 2)) - (range/blockSize)) * blockSize - streetWidth/2;
-    
-    // Determine lane (left or right side of road)
-    const laneOffset = 2.5; 
-    const direction = Math.random() > 0.5 ? 1 : -1;
-    
-    const car = new THREE.Group();
-    const chassis = new THREE.Mesh(carGeo, carMat);
-    chassis.castShadow = true;
-    car.add(chassis);
-    
-    // Lights
-    const h1 = new THREE.Sprite(carHeadMat); h1.scale.set(4,4,1); h1.position.set(0.5, 0.5, 1.8); car.add(h1);
-    const h2 = new THREE.Sprite(carHeadMat); h2.scale.set(4,4,1); h2.position.set(-0.5, 0.5, 1.8); car.add(h2);
-    const t1 = new THREE.Sprite(carTailMat); t1.scale.set(3,3,1); t1.position.set(0.5, 0.5, -1.8); car.add(t1);
-    const t2 = new THREE.Sprite(carTailMat); t2.scale.set(3,3,1); t2.position.set(-0.5, 0.5, -1.8); car.add(t2);
-    
+    const lane = (Math.floor(Math.random() * 18) - 9) * bs;
+    const dir = Math.random() > 0.5 ? 1 : -1;
+    const laneOff = dir > 0 ? 2 : -2;
+    const car = createCar();
+    car.userData = { axis: isX ? 'x' : 'z', dir, speed: 14 + Math.random() * 18 };
+
     if (isX) {
-        car.position.set(-range * direction, 0.5, roadOffset + (direction * laneOffset));
-        car.rotation.y = direction > 0 ? Math.PI / 2 : -Math.PI / 2;
-        car.userData = { axis: 'x', dir: direction, speed: 20 + Math.random() * 20 };
+        car.position.set(-cr * dir, 0, lane + laneOff);
+        car.rotation.y = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
     } else {
-        car.position.set(roadOffset - (direction * laneOffset), 0.5, -range * direction);
-        car.rotation.y = direction > 0 ? 0 : Math.PI;
-        car.userData = { axis: 'z', dir: direction, speed: 20 + Math.random() * 20 };
+        car.position.set(lane - laneOff, 0, -cr * dir);
+        car.rotation.y = dir > 0 ? 0 : Math.PI;
     }
-    
     scene.add(car);
     cars.push(car);
 }
 
-// Initial traffic
-for(let i=0; i<60; i++) spawnCar();
+for (let i = 0; i < 70; i++) spawnCar();
 
-// --- PARTICLES ---
-
-// Rain
-const rainGeo = new THREE.BufferGeometry();
+// =============================================
+//  RAIN — Instanced Streaks
+// =============================================
 const rainCount = CONFIG.rainCount;
-const rainPos = new Float32Array(rainCount * 3);
-const rainVel = new Float32Array(rainCount);
+const rainGeo = new THREE.BufferGeometry();
+const rPos = new Float32Array(rainCount * 3);
+const rVel = new Float32Array(rainCount);
 
-for(let i=0; i<rainCount; i++) {
-    rainPos[i*3] = (Math.random() - 0.5) * 600;
-    rainPos[i*3+1] = Math.random() * 200;
-    rainPos[i*3+2] = (Math.random() - 0.5) * 600;
-    rainVel[i] = CONFIG.rainSpeed + Math.random() * 40;
+for (let i = 0; i < rainCount; i++) {
+    rPos[i*3]   = (Math.random() - 0.5) * 700;
+    rPos[i*3+1] = Math.random() * 200;
+    rPos[i*3+2] = (Math.random() - 0.5) * 700;
+    rVel[i]     = CONFIG.rainSpeed + Math.random() * 50;
 }
-rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rPos, 3));
 
 const rainMat = new THREE.PointsMaterial({
     color: 0xaaccff,
-    size: 4, // Bigger streaks
+    size: 0.55,
     map: rainTex,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.75,
     blending: THREE.AdditiveBlending,
-    depthWrite: false
+    depthWrite: false,
+    sizeAttenuation: true,
 });
-const rainSystem = new THREE.Points(rainGeo, rainMat);
-scene.add(rainSystem);
+const rain = new THREE.Points(rainGeo, rainMat);
+scene.add(rain);
 
-// Clouds
-const clouds = new THREE.Group();
-scene.add(clouds);
-const cloudSpriteMat = new THREE.SpriteMaterial({
-    map: cloudTex,
-    color: 0x444455,
-    transparent: true,
-    opacity: 0.15,
-    depthWrite: false
-});
-
-for(let i=0; i<CONFIG.cloudCount; i++) {
-    const c = new THREE.Sprite(cloudSpriteMat.clone());
-    c.position.set(
-        (Math.random()-0.5)*800,
-        80 + Math.random() * 60,
-        (Math.random()-0.5)*800
-    );
-    c.scale.setScalar(150 + Math.random() * 150);
-    c.userData = { 
-        speed: CONFIG.windSpeed * (0.5 + Math.random() * 0.5) 
-    };
-    clouds.add(c);
+// Splash rings on ground (instanced)
+const splashRingGeo = new THREE.RingGeometry(0.05, 0.2, 12);
+splashRingGeo.rotateX(-Math.PI / 2);
+const splashMat = new THREE.MeshBasicMaterial({ color: 0x6688aa, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide });
+const splashes = [];
+for (let i = 0; i < 600; i++) {
+    const m = new THREE.Mesh(splashRingGeo, splashMat.clone());
+    m.position.set((Math.random()-0.5)*120, 0.02, (Math.random()-0.5)*120);
+    m.userData = { phase: Math.random() * Math.PI * 2, speed: 1.5 + Math.random() * 2.5 };
+    scene.add(m);
+    splashes.push(m);
 }
 
-// --- ANIMATION ---
+// =============================================
+//  CLOUDS
+// =============================================
+const cloudGroup = new THREE.Group();
+scene.add(cloudGroup);
+
+for (let i = 0; i < CONFIG.cloudCount; i++) {
+    const cm = new THREE.SpriteMaterial({
+        map: cloudTex,
+        color: new THREE.Color(0.18, 0.2, 0.28),
+        transparent: true,
+        opacity: 0.08 + Math.random() * 0.12,
+        depthWrite: false,
+        blending: THREE.NormalBlending,
+    });
+    const cs = new THREE.Sprite(cm);
+    cs.position.set(
+        (Math.random() - 0.5) * 1200,
+        75 + Math.random() * 80,
+        (Math.random() - 0.5) * 1200
+    );
+    cs.scale.setScalar(120 + Math.random() * 200);
+    cs.userData = { spd: CONFIG.windSpeed * (0.4 + Math.random() * 0.8) };
+    cloudGroup.add(cs);
+}
+
+// Rain haze layer (near ground mist)
+for (let i = 0; i < 20; i++) {
+    const hm = new THREE.SpriteMaterial({
+        map: cloudTex,
+        color: new THREE.Color(0.1, 0.12, 0.16),
+        transparent: true,
+        opacity: 0.04 + Math.random() * 0.06,
+        depthWrite: false,
+    });
+    const hs = new THREE.Sprite(hm);
+    hs.position.set((Math.random()-0.5)*300, 3 + Math.random()*8, (Math.random()-0.5)*300);
+    hs.scale.setScalar(60 + Math.random() * 80);
+    hs.userData = { spd: CONFIG.windSpeed * 0.3 };
+    cloudGroup.add(hs);
+}
+
+// =============================================
+//  ANIMATION LOOP
+// =============================================
 const clock = new THREE.Clock();
-let lightningTimer = 0;
+let ltTimer = 0;
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = clock.getDelta();
-    const time = clock.getElapsedTime();
-    
+    const dt = clock.getDelta();
+    const t  = clock.getElapsedTime();
+
     controls.update();
-    
-    // Rain
-    const pos = rainSystem.geometry.attributes.position.array;
-    for(let i=0; i<rainCount; i++) {
-        pos[i*3+1] -= rainVel[i] * delta; // Y
-        pos[i*3] -= CONFIG.windSpeed * delta * 2; // Wind X
-        
-        if (pos[i*3+1] < 0) {
-            pos[i*3+1] = 180 + Math.random() * 50;
-            pos[i*3] = (Math.random() - 0.5) * 600 + (Math.sin(time*0.1)*50); // Drift
-            pos[i*3+2] = (Math.random() - 0.5) * 600;
+
+    // ---- Rain ----
+    const rp = rain.geometry.attributes.position.array;
+    for (let i = 0; i < rainCount; i++) {
+        rp[i*3+1] -= rVel[i] * dt;
+        rp[i*3]   -= CONFIG.windSpeed * dt * 2.2;
+        if (rp[i*3+1] < -1) {
+            rp[i*3+1] = 190 + Math.random() * 30;
+            rp[i*3]   = (Math.random() - 0.5) * 700 + (Math.sin(t * 0.05) * 30);
+            rp[i*3+2] = (Math.random() - 0.5) * 700;
         }
     }
-    rainSystem.geometry.attributes.position.needsUpdate = true;
-    
-    // Clouds
-    clouds.children.forEach(c => {
-        c.position.x += c.userData.speed * delta;
-        if (c.position.x > 500) c.position.x = -500;
+    rain.geometry.attributes.position.needsUpdate = true;
+
+    // ---- Splash rings ----
+    splashes.forEach(s => {
+        const age = ((t * s.userData.speed + s.userData.phase) % 1);
+        s.scale.setScalar(0.3 + age * 2.2);
+        s.material.opacity = (1 - age) * 0.4;
     });
-    
-    // Traffic
+
+    // ---- Clouds ----
+    cloudGroup.children.forEach(c => {
+        c.position.x += c.userData.spd * dt;
+        if (c.position.x > 650) c.position.x = -650;
+    });
+
+    // ---- Traffic ----
     for (let i = cars.length - 1; i >= 0; i--) {
         const car = cars[i];
-        const speed = car.userData.speed * delta;
-        
+        const spd = car.userData.speed * dt;
         if (car.userData.axis === 'x') {
-            car.position.x += speed * car.userData.dir;
-            if (Math.abs(car.position.x) > range + 50) {
-                scene.remove(car);
-                cars.splice(i, 1);
-                spawnCar();
+            car.position.x += spd * car.userData.dir;
+            if (Math.abs(car.position.x) > cr + 60) {
+                scene.remove(car); cars.splice(i, 1); spawnCar();
             }
         } else {
-            car.position.z += speed * car.userData.dir;
-            if (Math.abs(car.position.z) > range + 50) {
-                scene.remove(car);
-                cars.splice(i, 1);
-                spawnCar();
+            car.position.z += spd * car.userData.dir;
+            if (Math.abs(car.position.z) > cr + 60) {
+                scene.remove(car); cars.splice(i, 1); spawnCar();
             }
         }
     }
-    
-    // Lightning
-    if (Math.random() > 0.99 && lightningTimer <= 0) {
-        lightningTimer = 0.1 + Math.random() * 0.2;
-        lightning.position.x = (Math.random()-0.5) * 500;
-        lightning.position.z = (Math.random()-0.5) * 500;
-        lightning.intensity = 5000 + Math.random() * 5000;
+
+    // ---- Lightning ----
+    if (Math.random() > 0.995 && ltTimer <= 0) {
+        ltTimer = 0.08 + Math.random() * 0.18;
+        lightningLight.position.x = (Math.random() - 0.5) * 600;
+        lightningLight.position.z = (Math.random() - 0.5) * 600;
+        lightningLight.intensity = 8000 + Math.random() * 12000;
     }
-    
-    if (lightningTimer > 0) {
-        lightningTimer -= delta;
-        
-        // Random flicker
-        const flash = Math.random() > 0.3 ? 0.3 : 0.0;
-        
-        // Flash Ambient
-        ambientLight.intensity = 1.5 + flash * 5;
-        
-        // Flash Fog
-        scene.fog.color.setHSL(0.6, 0.2, 0.05 + flash * 0.1);
-        scene.background.setHSL(0.6, 0.3, 0.02 + flash * 0.1);
-        
+
+    if (ltTimer > 0) {
+        ltTimer -= dt;
+        const flash = Math.random() > 0.35 ? 0.25 : 0;
+        hemi.intensity = 2.0 + flash * 6;
+        scene.fog.color.setHSL(0.6, 0.15, 0.04 + flash * 0.12);
+        scene.background.setHSL(0.6, 0.2, 0.02 + flash * 0.1);
     } else {
-        lightning.intensity = 0;
-        // Restore ambient
-        ambientLight.intensity = THREE.MathUtils.lerp(ambientLight.intensity, 1.5, delta * 5);
-        
-        scene.fog.color.setHex(bgCol);
-        scene.background.setHex(bgCol);
+        if (lightningLight.intensity > 0) lightningLight.intensity = 0;
+        hemi.intensity = THREE.MathUtils.lerp(hemi.intensity, 2.0, dt * 4);
+        scene.fog.color.setHex(SKY_COLOR);
+        scene.background.setHex(SKY_COLOR);
     }
-    
+
     renderer.render(scene, camera);
 }
 
+// =============================================
+//  RESIZE
+// =============================================
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
 });
 
 animate();
