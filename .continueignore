@@ -1,0 +1,13 @@
+# System/Config files
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
